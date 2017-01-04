@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script>
+//Example code to test Waynaut API 
+//only for demonstration purposes, not for commercial use, provided as-is without warranty.
+//Author Thomas Rossi - thomas.rossi@waynaut.com
+//©2017 Waynaut 
+$(document).ready(function(){
+
+/*GET /locations Example
+
+curl --get --include 'https://waynaut-staging.p.mashape.com/locations?country=IT&pretty=true&q=Milan&size=10' \
+  -H 'X-Mashape-Key: YOUR-KEY' \
+  -H 'Accept: application/json'
+*/
+	//on click of the search button on Location, execute the GET
+	$('#location-search').on("click", function(){
+		//get parameters from page or set defaults:
+		var key = $('#key').val()?$('#key').val():'REMEBER-TO-PUT-YOUR-KEY';
+		var location = $('#location').val()?$('#location').val():'Rome';
+		var country = $('#country').val()?$('#country').val():'IT';
+		var size = $('#size').val()?$('#size').val():'10';
+		//call waynaut staging endpoint:
+		getLocations(key, country, location, size).done(handleData).fail(handleError);
+	});	
+	function getLocations(key, country, location, size){
+		return $.ajax({
+        	url: "https://waynaut-staging.p.mashape.com/locations?country="+country+"&pretty=true&q="+location+"&size="+size,
+        	type: "GET",
+        	contentType: "application/json",
+        	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
+    	});
+	}
+	function handleData(data){
+		console.log('SUCCESS /locations GET request');
+		console.log(data);
+		var prettyJson = JSON.stringify(data, null, 4);
+		$('#location-results').html(prettyJson);
+	}
+	function handleError(data){
+		console.error('ERROR /locations GET request');
+		console.error(data)
+	}
+
+
+/*
+POST /travels Example
+
+curl -X POST --include 'https://waynaut-staging.p.mashape.com/travels?adults=1&children=0&departuredate=2016-10-20&latd=40.20340&lats=45.46427&lond=9.2340&lons=12.23452&returndate=2016-10-22&seniors=0' \
+  -H 'X-Mashape-Key: YOUR-KEY' \
+  -H 'Content-Type: application/x-www-form-urlencoded'
+*/
+	//set a suitable default value for departure date yyyy-mm-dd:
+	var currentDate = new Date(new Date().getTime() + 72 * 60 * 60 * 1000);
+	var day = ''+currentDate.getDate(); 
+	if(day.length<2) day = '0'+day;
+	var month = ''+currentDate.getMonth() + 1;
+	if(month.length<2) month = '0'+month;
+	var year = currentDate.getFullYear();
+	$('#departuredate').attr("placeholder",""+year+"-"+month+"-"+day);
+	//static variables for ajax callbacks
+	var key="someKey"; //mashape-key will go here
+	var locationUrl="someUrl"; //location URL from /travels will go here
+	//on click of the search, POST on /travels and then start polling the returned endpoint until solutions appear
+	$('#travels-search').on("click", function(){
+		//get parameters from page or set defaults:
+		key = $('#key').val()?$('#key').val():'REMEBER-TO-PUT-YOUR-KEY';
+		var adults = $('#adults').val()?$('#adults').val():'1';
+		var seniors = $('#seniors').val()?$('#seniors').val():'0';
+		var children = $('#children').val()?$('#children').val():'0';
+		var latd = $('#latd').val()?$('#latd').val():'45.4654'; //destination latitude Milan
+		var lond = $('#lond').val()?$('#lond').val():'9.1859'; //destination longitude
+		var lats = $('#lats').val()?$('#lats').val():'41.9028'; //start latitude Rome
+		var lons = $('#lons').val()?$('#lons').val():'12.4964'; //start longitude
+		var departuredate = $('#departuredate').val()?$('#departuredate').val():""+year+"-"+month+"-"+day;
+		var returndate = $('#returndate').val();
+		
+		//call waynaut staging endpoint:
+		postTravels(key, adults, seniors, children, latd, lond, lats, lons, departuredate, returndate).done(handleTravelsData).fail(handleTravelsError);
+	});	
+	function postTravels(key, adults, seniors, children, latd, lond, lats, lons, departuredate, returndate){
+		return $.ajax({
+        	url: "https://waynaut-staging.p.mashape.com/travels?adults="+adults+"&seniors="+seniors+"&children="+children+"&latd="+latd+"&lond="+lond+"&lats="+lats+"&lons="+lons+"&departuredate="+departuredate+(returndate?("&returndate="+returndate):""),
+        	type: "POST",
+        	contentType: "application/x-www-form-urlencoded",
+        	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
+    	});
+	}
+	function handleTravelsData(data, status, xhr){
+		console.log('SUCCESS /travels POST request');
+		var responseHeaders = xhr.getAllResponseHeaders();
+		console.log(responseHeaders);
+		locationUrl = xhr.getResponseHeader("Location");
+		$('#travels-results').html("Location: <span id=\"travel-id\">"+locationUrl+"</span>");
+		$('#travelsid-results').html("");
+		$('#polling-counter').html("");
+		//wait 5 seconds and then start polling the Location endpoint for solutions:
+		
+		poll();
+	}
+	function handleTravelsError(data){
+		console.error('ERROR /travels POST request');
+		console.error(data)
+		var prettyJson = JSON.stringify(data, null, 4);
+		$('#travels-results').html(prettyJson);
+	}
+
+/*
+GET /travels/id Example
+
+curl --get --include 'https://waynaut-staging.p.mashape.com/travels/{id}?type=DURATION' \
+  -H 'X-Mashape-Key: YOUR-KEY'
+*/	
+	function poll() {
+		$('#polling-counter').append(". ");
+	    setTimeout(function() {
+	        getTravels(locationUrl, key).done(handleTravelIdData).fail(handleTravelIdError);        
+	    }, 5000);
+	}
+	function getTravels(locationUrl, key){
+		return $.ajax({
+        	url: locationUrl+"?type=DURATION",
+        	type: "GET",
+        	contentType: "application/json",
+        	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
+    	});
+	}
+	function handleTravelIdData(data){
+		console.log('SUCCESS /travels/{id} GET request');
+		console.log(data);
+		if(!data.complete){
+			//waiting for the solutions to be constructed, poll again
+			poll();
+		} else {
+			//search complete
+			console.log('SEARCH COMPLETE');
+			var prettyJson = JSON.stringify(data, null, 4);
+			document.getElementById("travelsid-results").innerHTML=prettyJson;
+		}
+		
+	}
+	function handleTravelIdError(data){
+		console.error('ERROR /travels/{id} GET request');
+		console.error(data);
+		var prettyJson = JSON.stringify(data, null, 4);
+		document.getElementById("travelsid-results").innerHTML=prettyJson;
+	}
+
+
+})
+</script>
+</head>
+<body>
+
+<div>
+	<h3>Mashape-key</h3>
+	<input id="key" type="text"></input>
+</div>
+
+<div>
+	<h3>Location</h3>
+	<label for="location">Query string:</label>
+	<input id="location" type="text" placeholder="Rome"></input>
+	<label for="size">Size:</label>
+	<input id="size" type="text" placeholder="2"></input>
+	<label for="country">Country Code:</label>
+	<input id="country" type="text" placeholder="IT"></input><br/>
+	<button id="location-search"> Search </button>
+	<pre id="location-results">
+	</pre>
+</div>
+
+<div>
+	<h3>Travels</h3>
+	<label for="adults">Adults:</label>
+	<input id="adults" type="text" placeholder="1"></input>
+	<label for="children">Children:</label>
+	<input id="children" type="text" placeholder="0"></input>
+	<label for="seniors">Seniors:</label>
+	<input id="seniors" type="text" placeholder="0"></input><br/>
+	<label for="departuredate">Departure Date:</label>
+	<input id="departuredate" type="text"></input>
+	<label for="returndate">Return Date:</label>
+	<input id="returndate" type="text"></input><br/>
+	<label for="lats">Lat. Start point:</label>
+	<input id="lats" type="text" placeholder="41.9028"></input>
+	<label for="lons">Lon. Start point:</label>
+	<input id="lons" type="text" placeholder="12.4964"></input><br/>
+	<label for="latd">Lat. Destination point:</label>
+	<input id="latd" type="text" placeholder="45.4654"></input>
+	<label for="lond">Lon. Destination point:</label>
+	<input id="lond" type="text" placeholder="9.1859"></input><br/>
+	<button id="travels-search"> Search </button>
+	<div id="travels-results">
+	</div>
+	<div id="polling-counter">
+	</div>
+	<pre id="travelsid-results">
+	</pre>
+
+</div>
+
+
+</body>
+</html>
