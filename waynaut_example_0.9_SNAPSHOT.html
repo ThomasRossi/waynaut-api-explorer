@@ -8,6 +8,8 @@
 //©2017 Waynaut 
 $(document).ready(function(){
 
+	var baseURL = "https://waynaut-staging.p.mashape.com";
+
 /*GET /locations Example
 
 curl --get --include 'https://waynaut-staging.p.mashape.com/locations?country=IT&pretty=true&q=Milan&size=10' \
@@ -26,7 +28,7 @@ curl --get --include 'https://waynaut-staging.p.mashape.com/locations?country=IT
 	});	
 	function getLocations(key, country, location, size){
 		return $.ajax({
-        	url: "https://waynaut-staging.p.mashape.com/locations?country="+country+"&pretty=true&q="+location+"&size="+size,
+        	url: baseURL+"/locations?country="+country+"&pretty=true&q="+location+"&size="+size,
         	type: "GET",
         	contentType: "application/json",
         	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
@@ -62,6 +64,8 @@ curl -X POST --include 'https://waynaut-staging.p.mashape.com/travels?adults=1&c
 	//static variables for ajax callbacks
 	var key="someKey"; //mashape-key will go here
 	var locationUrl="someUrl"; //location URL from /travels will go here
+	var pgNumber = 1;
+	var complete = false;
 	//on click of the search, POST on /travels and then start polling the returned endpoint until solutions appear
 	$('#travels-search').on("click", function(){
 		//get parameters from page or set defaults:
@@ -81,7 +85,7 @@ curl -X POST --include 'https://waynaut-staging.p.mashape.com/travels?adults=1&c
 	});	
 	function postTravels(key, adults, seniors, children, latd, lond, lats, lons, departuredate, returndate){
 		return $.ajax({
-        	url: "https://waynaut-staging.p.mashape.com/travels?adults="+adults+"&seniors="+seniors+"&children="+children+"&latd="+latd+"&lond="+lond+"&lats="+lats+"&lons="+lons+"&departuredate="+departuredate+(returndate?("&returndate="+returndate):""),
+        	url: baseURL+"/travels?adults="+adults+"&seniors="+seniors+"&children="+children+"&latd="+latd+"&lond="+lond+"&lats="+lats+"&lons="+lons+"&departuredate="+departuredate+(returndate?("&returndate="+returndate):""),
         	type: "POST",
         	contentType: "application/x-www-form-urlencoded",
         	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
@@ -95,6 +99,8 @@ curl -X POST --include 'https://waynaut-staging.p.mashape.com/travels?adults=1&c
 		$('#travels-results').html("Location: <span id=\"travel-id\">"+locationUrl+"</span>");
 		$('#travelsid-results').html("");
 		$('#polling-counter').html("");
+		pgNumber=1;
+		complete=false;
 		//wait 5 seconds and then start polling the Location endpoint for solutions:
 		
 		poll();
@@ -113,14 +119,15 @@ curl --get --include 'https://waynaut-staging.p.mashape.com/travels/{id}?type=DU
   -H 'X-Mashape-Key: YOUR-KEY'
 */	
 	function poll() {
+		var timeout=complete?500:5000; //if solutions are complete, poll faster to go through solutions
 		$('#polling-counter').append(". ");
 	    setTimeout(function() {
-	        getTravels(locationUrl, key).done(handleTravelIdData).fail(handleTravelIdError);        
-	    }, 5000);
+	        getTravels(locationUrl, key, pgNumber).done(handleTravelIdData).fail(handleTravelIdError);        
+	    }, timeout);
 	}
-	function getTravels(locationUrl, key){
+	function getTravels(locationUrl, key, page){
 		return $.ajax({
-        	url: locationUrl+"?type=DURATION",
+        	url: locationUrl+"?type=DURATION&per_page=1&page="+page,
         	type: "GET",
         	contentType: "application/json",
         	beforeSend: function(xhr){xhr.setRequestHeader('X-Mashape-Key', key);}
@@ -131,12 +138,34 @@ curl --get --include 'https://waynaut-staging.p.mashape.com/travels/{id}?type=DU
 		console.log(data);
 		if(!data.complete){
 			//waiting for the solutions to be constructed, poll again
+			//if we have some solutions though, plot and go to next page	
+			if(data.travelSolutions.length>0){
+				$('#travelsid-results').append("<div>Solution:"+pgNumber+"</div><div id=\""+pgNumber+"\"></div>");
+				var prettyJson = JSON.stringify(data, null, 4);
+				document.getElementById(""+pgNumber).innerHTML=prettyJson;
+				pgNumber+=1;
+			}
+			
 			poll();
 		} else {
 			//search complete
 			console.log('SEARCH COMPLETE');
-			var prettyJson = JSON.stringify(data, null, 4);
-			document.getElementById("travelsid-results").innerHTML=prettyJson;
+			if(!complete){
+				$('#polling-counter').append(". COMPLETE ");
+				complete=true;
+			}
+			
+			if(data.travelSolutions.length>0){
+				$('#travelsid-results').append("<div>Solution:"+pgNumber+"</div><div id=\""+pgNumber+"\"></div>");
+				var prettyJson = JSON.stringify(data, null, 4);
+				document.getElementById(""+pgNumber).innerHTML=prettyJson;
+				pgNumber+=1;
+				//keep loading new pages!
+				poll();
+			} else {
+				$('#polling-counter').append(". DONE");
+			}
+
 		}
 		
 	}
